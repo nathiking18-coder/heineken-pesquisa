@@ -74,7 +74,7 @@ function doGet(e) {
     if (p.chave !== CHAVE_PAINEL) return responder({ erro: 'senha' }, p);
     var docs = lerLinhas(sheet).map(function (r) {
       var d = {};
-      try { d = JSON.parse(r.json || '{}'); } catch (x) {}
+      try { d = JSON.parse(r.json || "{}"); } catch (erroJson) { d = {}; }
       d.code = r.codigo; d.receivedAt = r.recebido_em;
       return d;
     });
