@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pesquisa sobre campanhas · UFPR</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="sheet" id="welcome">
+  <div class="eyebrow">UFPR · MBA em Gestão Estratégica da Comunicação · Neuromarketing</div>
+  <h1>Pesquisa sobre campanhas publicitárias</h1>
+  <p class="script">Você vai ver duas campanhas de uma marca de cerveja, responder uma pergunta rápida depois de cada uma e, no final, um questionário curto. Leva cerca de 10 minutos.</p>
+  <div class="panel" style="gap:10px">
+    <h3>Antes de começar</h3>
+    <ul style="margin:0;padding-left:20px;display:grid;gap:6px">
+      <li>Use, de preferência, um computador. No celular, deixe a tela na vertical.</li>
+      <li>Ligue o som: uma das campanhas é um vídeo.</li>
+      <li>As imagens e o vídeo passam sozinhos, sem botão para voltar. Fique atento à tela.</li>
+      <li>A pesquisa é anônima: não pedimos nome, e-mail nem telefone.</li>
+      <li>Você pode desistir a qualquer momento, basta fechar a página. Nada é enviado antes do final.</li>
+    </ul>
+  </div>
+  <p class="script" id="instr"></p>
+  <label class="row" for="consent" style="gap:10px;font-size:16px;align-items:flex-start;flex-wrap:nowrap"><input type="checkbox" id="consent" style="width:20px;height:20px;margin-top:3px;flex:none"> <span>Tenho entre 21 e 40 anos, li as informações acima e concordo em participar desta pesquisa acadêmica.</span></label>
+  <div id="cfgWarn" class="notice" hidden>Este link ainda não está pronto para receber respostas.</div>
+  <div class="row"><button class="primary big" id="startBtn" disabled>Começar</button></div>
+  <p class="muted" style="font-size:13px;margin:0">Pesquisa acadêmica realizada por alunas do MBA em Gestão Estratégica da Comunicação da Universidade Federal do Paraná (UFPR).</p>
+</main>
+
+<div id="stage" hidden></div>
+
+<script src="config.js"></script>
+<script>
+var $ = function(s){return document.querySelector(s)};
+var esc = function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+var params = new URLSearchParams(location.search);
+var IS_TEST = params.get('teste') === '1';
+var stage = $('#stage');
+var run = null;
+
+$('#instr').textContent = INSTRUCTION_SCRIPT;
+if (!SCRIPT_URL) $('#cfgWarn').hidden = false;
+$('#consent').addEventListener('change', function(e){ $('#startBtn').disabled = !e.target.checked || !SCRIPT_URL; });
+
+function uid(){ try{ return crypto.randomUUID(); }catch(_){ return 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,10); } }
+function mark(step){ run.timeline.push({etapa:step, inicio:new Date().toISOString(), t_ms:Math.round(performance.now()-run.t0)}); }
+function wait(ms){ return new Promise(function(r){ run.timer=setTimeout(r,ms); }); }
+function show(html, paper){ stage.className = paper ? 'paper' : ''; stage.innerHTML = html; stage.scrollTop = 0; window.scrollTo(0,0); }
+function fullscreen(){ try{ var p=document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen(); if(p&&p.catch)p.catch(function(){}); }catch(_){} }
+function exitFullscreen(){ try{ if(document.fullscreenElement){ var p=document.exitFullscreen(); if(p&&p.catch)p.catch(function(){}); } }catch(_){} }
+function preloadImg(url){ return new Promise(function(res,rej){ var i=new Image(); i.onload=function(){res(i)}; i.onerror=rej; i.src=url; }); }
+function preloadVid(url){ return new Promise(function(res,rej){
+  var v=document.createElement('video'); v.preload='auto'; v.playsInline=true; v.setAttribute('playsinline',''); v.src=url;
+  var t=setTimeout(ok,20000);
+  function clean(){ clearTimeout(t); v.removeEventListener('canplaythrough',ok); v.removeEventListener('error',bad); }
+  function ok(){ clean(); res(v); } function bad(){ clean(); rej(); }
+  v.addEventListener('canplaythrough',ok); v.addEventListener('error',bad); v.load();
+}); }
+
+async function pickOrder(){
+  try{
+    var c = await jsonp({acao:'ordem'});
+    if (c && typeof c.AB==='number'){ if(c.AB<c.BA) return 'AB'; if(c.BA<c.AB) return 'BA'; }
+  }catch(_){}
+  return Math.random()<0.5 ? 'AB' : 'BA';
+}
+
+$('#startBtn').addEventListener('click', async function(){
+  fullscreen();
+  try{ navigator.wakeLock && navigator.wakeLock.request('screen').catch(function(){}); }catch(_){}
+  run = {id:uid(), timeline:[], t0:performance.now(), open:{}, media:{}};
+  $('#welcome').hidden = true; stage.hidden = false; document.body.style.overflow='hidden';
+  show('<div class="sheet"><p class="muted">Carregando as campanhas…</p></div>', true);
+  try{
+    var orderP = pickOrder();
+    for (var k of ['A','B']) run.media[k] = await Promise.all(MEDIA[k].map(function(m){ return m.kind==='video' ? preloadVid(m.url) : preloadImg(m.url); }));
+    await Promise.all(COMPARE.A.concat(COMPARE.B).map(preloadImg));
+    run.order = await orderP;
+  }catch(_){
+    show('<div class="sheet"><h2>Não foi possível carregar as campanhas</h2><p class="muted">Verifique sua conexão e recarregue a página.</p><div class="row"><button class="primary" onclick="location.reload()">Recarregar</button></div></div>', true);
+    return;
+  }
+  mark('inicio');
+  runSequence();
+});
+
+async function cross(name){ show('<div class="cross" aria-hidden="true">+</div>'); mark(name); await wait(CROSS_MS); }
+
+async function playVideo(el){
+  el.className='stimvid'; el.controls=false; el.muted=false; el.currentTime=0;
+  stage.className=''; stage.replaceChildren(el);
+  var ended = new Promise(function(r){ el.onended=r; });
+  var played = false;
+  try{ await el.play(); played = true; }catch(_){}
+  if (!played){
+    // Alguns celulares exigem um toque para tocar com som
+    await new Promise(function(r){
+      var b=document.createElement('button'); b.className='tap'; b.textContent='Toque para assistir ao vídeo (com som)';
+      b.onclick=async function(){ b.remove(); try{ await el.play(); }catch(_){ el.muted=true; try{ await el.play(); }catch(__){} } r(); };
+      stage.appendChild(b);
+    });
+  }
+  return {ended: ended};
+}
+async function playStimulus(k){
+  var items = MEDIA[k];
+  for (var i=0;i<items.length;i++){
+    var m=items[i], el=run.media[k][i];
+    if (m.kind==='video'){
+      var endedP = (await playVideo(el)).ended;
+      mark('estimulo_'+k+'_'+(i+1)+'_video'+(el.muted?'_sem_som':''));
+      var dur = isFinite(el.duration) ? el.duration : 60;
+      await Promise.race([endedP, wait((dur+5)*1000)]); clearTimeout(run.timer);
+      el.pause();
+    } else {
+      el.className='stimimg'; el.alt='';
+      stage.className=''; stage.replaceChildren(el);
+      mark('estimulo_'+k+'_'+(i+1)+'_imagem');
+      await wait(IMG_MS);
+    }
+  }
+  mark('fim_estimulo_'+k);
+}
+function askOpen(k,pos){
+  return new Promise(function(res){
+    mark('pergunta_'+k);
+    show('<form class="sheet" id="openForm" novalidate>'+
+      '<div class="eyebrow">Campanha '+pos+' de 2</div>'+
+      '<label class="field" for="openAns" style="font:700 24px/1.3 var(--f-display);gap:14px">'+esc(STIM_QUESTION)+
+      '<textarea id="openAns" style="font-size:17px;min-height:160px"></textarea></label>'+
+      '<div id="openErr" class="qhint" hidden>Escreva sua resposta para continuar.</div>'+
+      '<div class="row"><button class="primary big" type="submit">Continuar</button></div></form>', true);
+    $('#openForm').addEventListener('submit', function(e){
+      e.preventDefault(); var v=$('#openAns').value.trim();
+      if(!v){ $('#openErr').hidden=false; return; }
+      run.open[k]=v; fullscreen(); res();
+    });
+  });
+}
+function explainCampaigns(){
+  return new Promise(function(res){
+    exitFullscreen();
+    mark('explicacao');
+    var ks = run.order.split('');
+    show('<div class="sheet">'+
+      '<div class="eyebrow">Sobre as campanhas que você viu</div>'+
+      '<h2 style="font-size:26px">As campanhas que você viu</h2>'+
+      ks.map(function(k){ return '<div class="qcard"><div class="row" style="gap:10px"><span class="tag '+k.toLowerCase()+'">'+k+'</span><h3 style="font-size:18px">'+esc(CAMPAIGN_INFO[k].title)+'</h3></div><p style="margin:0;font-size:17px;line-height:1.6">'+esc(CAMPAIGN_INFO[k].text)+'</p></div>'; }).join('')+
+      '<p class="script">A seguir, as duas campanhas aparecem lado a lado por alguns segundos e, depois, vêm as perguntas finais.</p>'+
+      '<div class="row"><button class="primary big" id="goC">Ver as campanhas lado a lado</button></div></div>', true);
+    $('#goC').onclick=function(){ fullscreen(); res(); };
+  });
+}
+async function compareScreen(){
+  var ks = run.order.split('');
+  show('<div class="compare">'+ks.map(function(k){ var it=COMPARE[k]; return '<div class="cside"><div class="clabel"><span class="cdot">'+k+'</span>'+esc(LABEL[k])+'</div><div class="cgrid n'+Math.min(it.length,4)+'">'+it.map(function(u){return '<img alt="" src="'+esc(u)+'">'}).join('')+'</div></div>'; }).join('')+'</div>');
+  mark('comparativa_'+ks[0]+'_esq_'+ks[1]+'_dir');
+  await wait(COMPARE_MS);
+  exitFullscreen();
+}
+async function runSequence(){
+  var f=run.order[0], s=run.order[1];
+  await cross('cruz_1');
+  await playStimulus(f);
+  await askOpen(f,1);
+  await cross('cruz_2');
+  await playStimulus(s);
+  await askOpen(s,2);
+  await explainCampaigns();
+  await compareScreen();
+  mark('questionario');
+  stepQuestionnaire();
+}
+
+function qHtml(q){
+  var n='<div class="qn">PERGUNTA '+q.n+' DE '+QS.length+'</div>';
+  if(q.type==='likert') return '<div class="qcard" data-q="'+q.id+'">'+n+'<fieldset><legend>'+esc(q.label)+'</legend><div class="likert">'+[1,2,3,4,5].map(function(v){return '<label class="opt"><input type="radio" name="'+q.id+'" value="'+v+'">'+v+'</label>'}).join('')+'</div><div class="anchors"><span>1 · '+LIK[0]+'</span><span>5 · '+LIK[1]+'</span></div></fieldset></div>';
+  if(q.type==='choice') return '<div class="qcard" data-q="'+q.id+'">'+n+'<fieldset><legend>'+esc(q.label)+'</legend><div class="choices">'+q.options.map(function(o){return '<label class="opt"><input type="radio" name="'+q.id+'" value="'+esc(o)+'">'+esc(o)+'</label>'}).join('')+'</div></fieldset></div>';
+  if(q.type==='number') return '<div class="qcard" data-q="'+q.id+'">'+n+'<label class="field qlabel" for="q_'+q.id+'">'+esc(q.label)+'<input type="number" inputmode="numeric" min="10" max="99" id="q_'+q.id+'" name="'+q.id+'" style="max-width:140px"></label></div>';
+  return '<div class="qcard" data-q="'+q.id+'">'+n+'<label class="field qlabel" for="q_'+q.id+'">'+esc(q.label)+'<textarea id="q_'+q.id+'" name="'+q.id+'"></textarea></label></div>';
+}
+function stepQuestionnaire(){
+  var body = QUESTIONS.map(function(q){ return q.section ? '<div class="section-h">'+esc(q.section)+(q.note?'<div style="font:400 13px var(--f-body);text-transform:none;letter-spacing:0;margin-top:6px">'+esc(q.note)+'</div>':'')+'</div>' : qHtml(q); }).join('');
+  show('<form class="sheet" id="qform" novalidate><div class="eyebrow">Questionário</div><h2 style="font-size:24px">Algumas perguntas sobre o que você viu</h2>'+body+
+    '<div id="qerr" class="notice" hidden></div><div class="row"><button class="primary big" type="submit" id="qsend">Enviar respostas</button></div></form>', true);
+  // destaque visual para navegadores sem :has()
+  $('#qform').addEventListener('change', function(e){ if(e.target.type==='radio'){ document.querySelectorAll('input[name="'+e.target.name+'"]').forEach(function(i){ i.parentElement.classList.toggle('on', i.checked); }); } });
+  $('#qform').addEventListener('submit', function(e){
+    e.preventDefault();
+    var fd=new FormData(e.target), ans={}, miss=[];
+    QS.forEach(function(q){
+      var v=fd.get(q.id); v = typeof v==='string' ? v.trim() : null;
+      if((q.type==='likert'||q.type==='number')&&v) v=Number(v);
+      if(v===''||v==null||(typeof v==='number'&&isNaN(v))){ if(!q.optional) miss.push(q.id); v=null; }
+      ans[q.id]=v;
+    });
+    document.querySelectorAll('.qcard').forEach(function(c){ c.classList.toggle('missing', miss.indexOf(c.dataset.q)>=0); });
+    if(miss.length){ var er=$('#qerr'); er.hidden=false; er.textContent='Responda as perguntas destacadas para continuar.'; document.querySelector('.qcard[data-q="'+miss[0]+'"]').scrollIntoView({block:'center'}); return; }
+    var reasons=[];
+    if(ans.q1_idade<21||ans.q1_idade>40) reasons.push('idade fora de 21 a 40');
+    QS.forEach(function(q){ if(q.exclude && ans[q.id]===q.exclude) reasons.push('não consome cerveja'); });
+    mark('fim');
+    run.doc = {id:run.id, teste:IS_TEST, order:run.order, questionnaire:QUESTIONNAIRE_VERSION, createdAt:new Date().toISOString(),
+      excluded:reasons.length>0, exclusionReasons:reasons, timeline:run.timeline, stimulusOpen:{A:run.open.A||null,B:run.open.B||null}, answers:ans,
+      device:(/Mobi|Android|iPhone/i.test(navigator.userAgent)?'celular':'computador')+' '+innerWidth+'x'+innerHeight};
+    send();
+  });
+}
+async function send(){
+  var btn=$('#qsend'), er=$('#qerr');
+  btn.disabled=true; btn.textContent='Enviando…'; er.hidden=true;
+  var ok=false;
+  for (var attempt=0; attempt<2 && !ok; attempt++){
+    try{
+      await fetch(SCRIPT_URL, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(run.doc)});
+    }catch(_){}
+    for (var i=0;i<4 && !ok;i++){
+      await new Promise(function(r){ setTimeout(r, 1200+i*800); });
+      try{ var c = await jsonp({acao:'confirmar', id:run.id}); ok = !!(c&&c.ok); }catch(_){}
+    }
+  }
+  if(!ok){ btn.disabled=false; btn.textContent='Tentar enviar de novo'; er.hidden=false; er.textContent='Suas respostas ainda não foram enviadas. Verifique sua conexão e toque em "Tentar enviar de novo". Não feche esta página.'; return; }
+  run.sent = true;
+  try{ localStorage.setItem('heineken-pesquisa-respondida', new Date().toISOString()); }catch(_){}
+  show('<div class="sheet" style="text-align:center;justify-items:center;padding-top:15vh"><h2 style="font-size:28px">Obrigado pela participação!</h2><p class="muted" style="max-width:46ch">Suas respostas foram enviadas de forma anônima. Você já pode fechar esta página.</p></div>', true);
+}
+window.addEventListener('beforeunload', function(e){ if(run && !run.sent && run.timeline.length){ e.preventDefault(); e.returnValue=''; } });
+</script>
+</body>
+</html>

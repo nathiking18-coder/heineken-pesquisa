@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Painel · Estudo Heineken 0.0</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">UFPR · MBA Gestão Estratégica da Comunicação · Neuromarketing</div>
+      <h1>Estudo Heineken 0.0 · Resultados</h1>
+      <div class="muted" style="font-size:14px;margin-top:4px">Estímulo A: Taça F1 · Estímulo B: Collab Carnan · <span id="updated">—</span></div>
+    </div>
+    <div class="row"><a class="btn" href="./" target="_blank" rel="noopener">Abrir link da pesquisa</a></div>
+  </header>
+
+  <form class="panel" id="login" style="margin-top:22px;max-width:420px" hidden>
+    <h2>Entrar no painel</h2>
+    <label class="field" for="pw">Senha (a CHAVE_PAINEL do Apps Script)<input type="password" id="pw" autocomplete="current-password"></label>
+    <div id="loginErr" class="qhint" hidden></div>
+    <div class="row"><button class="primary" type="submit">Entrar</button></div>
+  </form>
+
+  <div class="view" id="dash" hidden>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2>Resumo</h2>
+        <div class="row">
+          <label class="row" for="incPilot" style="gap:6px;font-size:14px"><input type="checkbox" id="incPilot"> Incluir testes</label>
+          <label class="row" for="incExcl" style="gap:6px;font-size:14px"><input type="checkbox" id="incExcl"> Incluir excluídos</label>
+          <button id="reload" type="button">Atualizar</button>
+          <button id="csvBtn" type="button">Baixar CSV</button>
+        </div>
+      </div>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="panel" id="qResults"></div>
+    <div class="panel">
+      <h2>Participantes</h2>
+      <div class="ptable" id="ptable"></div>
+      <p class="muted" style="margin:0;font-size:13px">Para apagar uma resposta, exclua a linha dela na planilha do Google Sheets.</p>
+    </div>
+  </div>
+</div>
+<script src="config.js"></script>
+<script>
+var $=function(s){return document.querySelector(s)};
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+var KEY='heineken-painel-senha', responses=[], pw='';
+try{ pw=localStorage.getItem(KEY)||''; }catch(_){}
+
+async function load(first){
+  try{
+    var d=await jsonp({acao:'respostas', chave:pw});
+    if(d.erro==='senha'){ showLogin('Senha incorreta.'); return; }
+    responses=(d.respostas||[]).filter(function(r){return r&&r.id});
+    try{ localStorage.setItem(KEY,pw); }catch(_){}
+    $('#login').hidden=true; $('#dash').hidden=false;
+    $('#updated').textContent='atualizado às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    render();
+  }catch(e){
+    if(first||$('#dash').hidden) showLogin(SCRIPT_URL?'Não foi possível conectar à planilha. Tente de novo.':'Falta configurar a SCRIPT_URL em config.js.');
+  }
+}
+function showLogin(msg){ $('#dash').hidden=true; $('#login').hidden=false; var e=$('#loginErr'); e.hidden=!msg; e.textContent=msg||''; }
+$('#login').addEventListener('submit',function(e){ e.preventDefault(); pw=$('#pw').value; load(true); });
+$('#reload').addEventListener('click',function(){ load(); });
+['#incPilot','#incExcl'].forEach(function(s){ $(s).addEventListener('change',render); });
+setInterval(function(){ if(!$('#dash').hidden && document.visibilityState==='visible') load(); }, 60000);
+if(pw) load(true); else showLogin('');
+
+var mean=function(a){return a.length?a.reduce(function(s,x){return s+x},0)/a.length:null};
+var fmt=function(x){return x==null?'—':x.toFixed(2).replace('.',',')};
+function sample(){ var ip=$('#incPilot').checked, ie=$('#incExcl').checked; return responses.filter(function(r){return (ip||!r.teste)&&(ie||!r.excluded)}); }
+function bar(label,n,total,cls){ var p=total?n/total*100:0; return '<div class="bar"><span>'+esc(label)+'</span><div class="track"><div class="fill '+(cls||'')+'" style="width:'+p+'%"></div></div><span class="num">'+n+'</span></div>'; }
+function nums(rs,id){ return rs.map(function(r){return r.answers&&r.answers[id]}).filter(function(x){return typeof x==='number'}); }
+function likertBlock(rs,q){
+  var v=nums(rs,q.id), cls=(q.group||'').toLowerCase();
+  return '<div class="q-res"><h3>'+q.n+'. '+esc(q.label)+'</h3><div class="means"><span>média <b class="mono">'+fmt(mean(v))+'</b> <span class="muted">(n='+v.length+')</span></span></div><div class="bars">'+
+    [1,2,3,4,5].map(function(k){return bar(k+(k===1?' · '+LIK[0]:k===5?' · '+LIK[1]:''),v.filter(function(x){return x===k}).length,v.length,cls)}).join('')+'</div></div>';
+}
+function groupMean(rs,g){ return mean(rs.map(function(r){ return mean(QS.filter(function(q){return q.group===g}).map(function(q){return r.answers&&r.answers[q.id]}).filter(function(x){return typeof x==='number'})); }).filter(function(x){return x!=null})); }
+function choiceTag(r){ var c=r.answers&&r.answers.q11_escolha; return c?(c.indexOf('Campanha A')===0?'escolheu A':'escolheu B'):''; }
+function render(){
+  var rs=sample(), ab=rs.filter(function(r){return r.order==='AB'}).length;
+  $('#stats').innerHTML=[[rs.length,'respostas no filtro · meta 30'],[ab,'ordem A → B'],[rs.length-ab,'ordem B → A'],[fmt(groupMean(rs,'A')),'média Anúncio A (Q5 a Q7)'],[fmt(groupMean(rs,'B')),'média Anúncio B (Q8 a Q10)']]
+    .map(function(x){return '<div class="stat"><div class="v">'+x[0]+'</div><div class="l">'+esc(x[1])+'</div></div>'}).join('');
+  if(!rs.length){ $('#qResults').innerHTML='<div class="empty">Nenhuma resposta ainda. Assim que alguém concluir a pesquisa pelo link, os resultados aparecem aqui.</div>'; $('#ptable').innerHTML=''; return; }
+  var q11=QS.filter(function(q){return q.id==='q11_escolha'})[0];
+  var html='<div class="res-group"><h2>Pergunta após cada estímulo</h2><p class="muted" style="margin:0 0 6px;font-size:14px">“'+esc(STIM_QUESTION)+'”</p><div class="grid2">'+
+    ['A','B'].map(function(k){ var v=rs.filter(function(r){return r.stimulusOpen&&r.stimulusOpen[k]}); return '<div class="stim"><h3><span class="tag '+k.toLowerCase()+'">'+k+'</span> '+LABEL[k]+' <span class="muted" style="font-weight:400">('+v.length+')</span></h3><div class="answers">'+
+      (v.map(function(r){return '<blockquote class="'+k.toLowerCase()+'"><cite>'+esc(r.code)+' · viu '+(r.order[0]===k?'1º':'2º')+' · '+choiceTag(r)+'</cite>'+esc(r.stimulusOpen[k])+'</blockquote>'}).join('')||'<span class="muted">Sem respostas.</span>')+'</div></div>'; }).join('')+'</div></div>';
+  var tot11=rs.filter(function(r){return r.answers&&r.answers.q11_escolha}).length;
+  html+='<div class="res-group"><h2>Escolha da campanha (Q11)</h2><div class="bars">'+q11.options.map(function(o,i){return bar(o,rs.filter(function(r){return r.answers&&r.answers.q11_escolha===o}).length,tot11,i?'b':'a')}).join('')+'</div></div>';
+  html+='<div class="res-group"><h2><span class="tag a">A</span> Anúncio A · Taça F1</h2>'+QS.filter(function(q){return q.group==='A'}).map(function(q){return likertBlock(rs,q)}).join('')+'</div>';
+  html+='<div class="res-group"><h2><span class="tag b">B</span> Anúncio B · Collab Carnan</h2>'+QS.filter(function(q){return q.group==='B'}).map(function(q){return likertBlock(rs,q)}).join('')+'</div>';
+  var ages=nums(rs,'q1_idade');
+  var bands=[['21 a 25',21,25],['26 a 30',26,30],['31 a 35',31,35],['36 a 40',36,40]].map(function(b){return bar(b[0],ages.filter(function(x){return x>=b[1]&&x<=b[2]}).length,ages.length)});
+  if(ages.some(function(x){return x<21||x>40})) bands.push(bar('fora de 21 a 40',ages.filter(function(x){return x<21||x>40}).length,ages.length));
+  html+='<div class="res-group"><h2>Perfil</h2><div class="q-res"><h3>1. Idade</h3><div class="means"><span>média <b class="mono">'+fmt(mean(ages))+'</b></span><span>mín. <b class="mono">'+(ages.length?Math.min.apply(null,ages):'—')+'</b></span><span>máx. <b class="mono">'+(ages.length?Math.max.apply(null,ages):'—')+'</b></span></div><div class="bars">'+bands.join('')+'</div></div>'+
+    QS.filter(function(q){return q.type==='choice'&&q.id!=='q11_escolha'}).map(function(q){ var v=rs.map(function(r){return r.answers&&r.answers[q.id]}).filter(Boolean); return '<div class="q-res"><h3>'+q.n+'. '+esc(q.label)+'</h3><div class="bars">'+q.options.map(function(o){return bar(o,v.filter(function(x){return x===o}).length,v.length)}).join('')+'</div></div>'; }).join('')+'</div>';
+  var v12=rs.filter(function(r){return r.answers&&r.answers.q12_aberta});
+  html+='<div class="res-group"><h2>Pergunta aberta (Q12) <span class="muted" style="font-weight:400;font-size:15px">('+v12.length+')</span></h2><div class="answers">'+
+    (v12.map(function(r){return '<blockquote><cite>'+esc(r.code)+' · '+(r.order==='AB'?'A→B':'B→A')+' · '+choiceTag(r)+'</cite>'+esc(r.answers.q12_aberta)+'</blockquote>'}).join('')||'<span class="muted">Sem respostas.</span>')+'</div></div>';
+  $('#qResults').innerHTML=html;
+  $('#ptable').innerHTML='<table><thead><tr><th>Código</th><th>Ordem</th><th>Recebida</th><th>Aparelho</th><th>Situação</th></tr></thead><tbody>'+
+    rs.slice().sort(function(a,b){return (a.receivedAt||'')<(b.receivedAt||'')?-1:1}).map(function(r){
+      return '<tr><td class="mono">'+esc(r.code)+'</td><td>'+(r.order==='AB'?'A → B':'B → A')+'</td><td class="mono">'+esc(r.receivedAt?new Date(r.receivedAt).toLocaleString('pt-BR'):'')+'</td><td>'+esc(r.device||'')+'</td><td>'+
+        (r.teste?'<span class="tag p">teste</span> ':'')+(r.excluded?'<span class="tag x">excluído: '+esc((r.exclusionReasons||[]).join(', '))+'</span>':(r.teste?'':'válida'))+'</td></tr>';
+    }).join('')+'</tbody></table>';
+}
+function csvCell(v){ v=v==null?'':String(v); return /[";\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+$('#csvBtn').addEventListener('click',function(){
+  var rs=sample(); if(!rs.length) return;
+  var head=['codigo','teste','excluido','motivo_exclusao','ordem','recebida','aparelho','atencao_A','atencao_B'].concat(QS.map(function(q){return q.id}));
+  var rows=rs.map(function(r){ return [r.code,r.teste?'sim':'nao',r.excluded?'sim':'nao',(r.exclusionReasons||[]).join(', '),r.order==='AB'?'A>B':'B>A',r.receivedAt,r.device,r.stimulusOpen&&r.stimulusOpen.A,r.stimulusOpen&&r.stimulusOpen.B]
+    .concat(QS.map(function(q){return r.answers&&r.answers[q.id]})).map(csvCell).join(';'); });
+  var blob=new Blob(['﻿'+head.join(';')+'\n'+rows.join('\n')],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='respostas-heineken-zero.csv'; document.body.appendChild(a); a.click(); a.remove();
+});
+</script>
+</body>
+</html>
