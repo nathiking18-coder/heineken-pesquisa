@@ -1,7 +1,7 @@
 /* Pesquisa Heineken 0.0 — configuração compartilhada pela pesquisa e pelo painel. */
 
 // URL do Apps Script (termina em /exec). Veja apps-script/PesquisaHeineken.gs
-var SCRIPT_URL = '';
+var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzx_4TTSgmQ8_qPh-694Yq8qX_9QO5uD4B4yFs4pIGSP0PzfisSokL4w0ra53093ggKmQ/exec';
 
 var QUESTIONNAIRE_VERSION = 'apendice-b-v1-online';
 var IMG_MS = 12000;      // tempo de cada imagem na tela
